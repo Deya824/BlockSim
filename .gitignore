@@ -1,0 +1,24 @@
+# Logs & Build
+node_modules
+dist
+dist-ssr
+*.log
+npm-debug.log*
+
+# Environment Secrets (VERY IMPORTANT)
+.env
+.env.local
+backend/.env
+
+# Backend specific
+backend/node_modules
+backend/dist
+
+# Editor & System
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# OS specific
+Thumbs.db

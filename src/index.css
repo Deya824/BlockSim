@@ -1,0 +1,275 @@
+body {
+  margin: 0;
+  background-color: #000000; /* PURE BLACK */
+  background-image: 
+    linear-gradient(rgba(0, 255, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 0, 0.03) 1px, transparent 1px);
+  background-size: 20px 20px; /* Grid Scanlines */
+  font-family: 'Courier New', Courier, monospace; /* HACKER FONT */
+  overflow-x: hidden;
+  color: #00ff00; /* NEON GREEN TEXT */
+}
+
+/* --- CRT MONITOR OVERLAY --- */
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+.crt-overlay {
+  position: fixed;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+              linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  background-size: 100% 3px, 3px 100%;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.crt-scanline {
+  width: 100%;
+  height: 100px;
+  z-index: 10000;
+  background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(0, 255, 0, 0.1) 50%, rgba(0,0,0,0) 100%);
+  opacity: 0.1;
+  position: fixed;
+  bottom: 100%;
+  pointer-events: none;
+  animation: scanline 10s linear infinite;
+}
+
+/* --- THE CONTAINER (WRAPPED GRID) --- */
+.chain-container {
+  display: flex;
+  flex-wrap: wrap;       
+  justify-content: center; 
+  padding: 50px;
+  gap: 60px; 
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+/* --- THE 3D CUBE ENGINE --- */
+.cube-wrapper {
+  perspective: 1000px; 
+  width: 320px;
+  height: 420px; 
+  margin-bottom: 20px;
+}
+
+.cube {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transform: rotateY(-25deg) rotateX(10deg);
+  transition: transform 0.5s ease-out;
+  animation: float 4s ease-in-out infinite;
+}
+
+.cube:hover {
+  transform: rotateY(-15deg) rotateX(5deg) scale(1.05);
+  z-index: 10;
+  filter: drop-shadow(0 0 15px #00ff00);
+}
+
+/* FLOATING ANIMATION */
+@keyframes float {
+  0%, 100% { transform: rotateY(-25deg) rotateX(10deg) translateY(0); }
+  50% { transform: rotateY(-25deg) rotateX(10deg) translateY(-20px); }
+}
+
+/* --- THE HACKER FACES --- */
+.face {
+  position: absolute;
+  backface-visibility: hidden;
+  border: 2px solid #00ff00;
+  background: black;
+}
+
+/* 1. FRONT FACE (Main Content) */
+.face-front {
+  width: 320px;
+  height: 420px;
+  transform: translateZ(60px);
+  background: black;
+  box-shadow: inset 0 0 30px rgba(0, 255, 0, 0.2); 
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* 2. SIDE FACE (Depth) */
+.face-side {
+  width: 120px;
+  height: 420px;
+  right: 0;
+  transform: rotateY(90deg) translateZ(60px);
+  background: #001100;
+  border-left: none;
+}
+
+/* 3. TOP FACE (Lid) */
+.face-top {
+  width: 320px;
+  height: 120px;
+  top: 0;
+  transform: rotateX(90deg) translateZ(60px);
+  background: #001100;
+  border-bottom: none;
+}
+
+/* --- COLOR THEMES & EFFECTS --- */
+
+/* GREEN (Valid) */
+.cube.valid { --neon-color: #00ff00; }
+.cube.valid .face { border-color: #00ff00; box-shadow: 0 0 10px #00ff00; }
+/* NEON PULSE FOR VALID BLOCKS */
+@keyframes neon-breath {
+  0% { box-shadow: 0 0 10px #00ff00, inset 0 0 10px #00ff00; }
+  50% { box-shadow: 0 0 25px #00ff00, inset 0 0 20px #00ff00; }
+  100% { box-shadow: 0 0 10px #00ff00, inset 0 0 10px #00ff00; }
+}
+.cube.valid .face-front { animation: neon-breath 3s infinite ease-in-out; }
+
+/* RED (Hacked) */
+.cube.invalid { --neon-color: #ff0000; }
+.cube.invalid .face { border-color: #ff0000; box-shadow: 0 0 15px #ff0000; }
+/* GLITCH EFFECT FOR HACKED TEXT */
+@keyframes glitch-skew {
+  0% { transform: skew(0deg); }
+  20% { transform: skew(-2deg); }
+  40% { transform: skew(2deg); }
+  60% { transform: skew(-1deg); }
+  80% { transform: skew(1deg); }
+  100% { transform: skew(0deg); }
+}
+@keyframes glitch-color {
+  0% { text-shadow: 2px 0 red, -2px 0 blue; }
+  50% { text-shadow: 2px 0 blue, -2px 0 red; }
+  100% { text-shadow: 2px 0 red, -2px 0 blue; }
+}
+.glitch-text {
+  animation: glitch-skew 0.3s infinite, glitch-color 0.2s infinite;
+  color: #ff0000 !important;
+  font-weight: bold;
+  letter-spacing: 3px;
+}
+
+/* PURPLE (PoS) */
+.cube.pos { --neon-color: #d800ff; }
+.cube.pos .face { border-color: #d800ff; box-shadow: 0 0 10px #d800ff; }
+
+/* --- INPUTS & BUTTONS --- */
+input {
+  background: transparent !important;
+  border: 1px solid var(--neon-color) !important;
+  color: var(--neon-color) !important;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+}
+.glass-panel {
+  border: 1px dashed rgba(0, 255, 0, 0.3);
+  padding: 10px;
+  margin-top: 15px;
+}
+.data-row {
+  border-bottom: 1px solid #333;
+  padding: 5px 0;
+  font-size: 10px;
+  word-break: break-all;
+  color: #ccc;
+}
+.cube-btn {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #00ff00;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+  background: black;
+  color: #00ff00;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  transition: 0.2s;
+}
+.cube-btn:hover {
+  background: #00ff00;
+  color: black;
+  box-shadow: 0 0 15px #00ff00;
+}
+/* --- MATRIX RAIN CANVAS --- */
+#matrix-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0; /* Behind everything */
+  opacity: 0.2; /* Subtle background */
+}
+
+/* --- LIVE SYSTEM TERMINAL --- */
+.terminal-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  max-height: 140px;        /* 🔽 reduced height */
+  overflow-y: auto;         /* scroll logs only */
+  background: rgba(0, 0, 0, 0.85);
+  border-top: 1px solid #00ff00;
+  padding: 8px 12px;
+  font-family: monospace;
+  font-size: 12px;
+  z-index: 50;
+}
+
+
+.terminal-line {
+  margin: 2px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0.9;
+}
+
+
+.log-info { color: #00ff00; }
+.log-warn { color: #ffff00; }
+.log-error { color: #ff0000; font-weight: bold; text-shadow: 0 0 5px red; }
+.log-success { color: #00ffff; }
+
+/* Custom Scrollbar for Terminal */
+.terminal-container::-webkit-scrollbar { width: 8px; }
+.terminal-container::-webkit-scrollbar-thumb { background: #00ff00; border-radius: 4px; }
+/* SYNC AND LOGOUT STYLES */
+.btn-save {
+  background: black;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  padding: 8px 15px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+}
+
+.btn-save:hover {
+  background: #00ff00;
+  color: black;
+  box-shadow: 0 0 20px #00ff00;
+}
+
+.btn-logout {
+  background: black;
+  color: #ff4444;
+  border: 1px solid #ff4444;
+  padding: 8px 15px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+}
+
+.btn-logout:hover {
+  background: #ff4444;
+  color: white;
+  box-shadow: 0 0 15px #ff4444;
+}
