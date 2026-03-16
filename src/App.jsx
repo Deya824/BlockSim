@@ -6,6 +6,11 @@ import Simulator from './Simulator';
 import InfoPage from './InfoPage';
 import ProtectedRoute from './ProtectedRoute';
 import './index.css';
+import TamperAttack     from './TamperAttack';
+import FiftyOneAttack   from './FiftyOneAttack';
+import ReplayAttack     from './ReplayAttack';
+import SybilAttack      from './SybilAttack';
+import DoubleSpendAttack from './DoubleSpendAttack';
 
 function App() {
   return (
@@ -32,6 +37,11 @@ function App() {
             </ProtectedRoute>
           } 
         />
+         <Route path="/attack/tamper"      element={<TamperAttack />} />
+        <Route path="/attack/fifty-one"   element={<FiftyOneAttack />} />
+        <Route path="/attack/replay"      element={<ReplayAttack />} />
+        <Route path="/attack/sybil"       element={<SybilAttack />} />
+        <Route path="/attack/doublespend" element={<DoubleSpendAttack />} />
         
         <Route 
           path="/info" 
@@ -47,3 +57,6 @@ function App() {
 }
 
 export default App;
+
+
+

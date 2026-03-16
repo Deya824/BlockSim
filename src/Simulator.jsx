@@ -4,6 +4,7 @@ import sha256 from 'crypto-js/sha256';
 import Block from './Block';
 import MatrixRain from './MatrixRain';
 import KeyVault from './KeyVault';
+import AttackMenu from './AttackMenu';
 import './index.css';
 
 function Simulator() {
@@ -12,32 +13,29 @@ function Simulator() {
 
   const [blocks, setBlocks] = useState([{
     index: 1,
-    hash: "00ae5fb007821c281ab4d80f8562d801884378650176909c413a2c398c8e6e01",
+hash: "00ae5fb007821c281ab4d80f8562d801884378650176909c413a2c398c8e6e01",
     previousHash: "0", nonce: 200,
     sender: "SYSTEM", receiver: "USER_A", amount: 10,
     createdWith: "POW",
   }]);
 
-  const [consensus,    setConsensus]   = useState("POW");
-  const [logs,         setLogs]        = useState([]);
-  const [isSyncing,    setIsSyncing]   = useState(false);
-  const [showKeyVault, setShowKeyVault] = useState(false);
+  const [consensus,      setConsensus]      = useState("POW");
+  const [logs,           setLogs]           = useState([]);
+  const [isSyncing,      setIsSyncing]      = useState(false);
+  const [showKeyVault,   setShowKeyVault]   = useState(false);
+  const [showAttackMenu, setShowAttackMenu] = useState(false);
 
-  // ── GLOBAL WALLET (generated once, reused for all blocks) ──
-  const [wallet, setWallet] = useState(null); // { privateKey, publicKey }
+  const [wallet, setWallet] = useState(null);
 
-  // ── ADD BLOCK MODAL ──
-  // step: 'form' → 'sign' → done
   const [showModal,  setShowModal]  = useState(false);
-  const [modalStep,  setModalStep]  = useState('form'); // 'form' | 'sign'
+  const [modalStep,  setModalStep]  = useState('form');
   const [formData,   setFormData]   = useState({ sender: "USER_A", receiver: "USER_B", amount: "" });
-  const [txHash,     setTxHash]     = useState('');   // sha256 of the form data
-  const [txSig,      setTxSig]      = useState('');   // sha256(txHash + privateKey)
-  const [sigStatus,  setSigStatus]  = useState(null); // null | 'signing' | 'done'
+  const [txHash,     setTxHash]     = useState('');
+  const [txSig,      setTxSig]      = useState('');
+  const [sigStatus,  setSigStatus]  = useState(null);
 
   const terminalEndRef = useRef(null);
 
-  // ── helpers ──
   const addLog = (message, type = "info") => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, { time: timestamp, msg: message, type }]);
@@ -72,7 +70,6 @@ function Simulator() {
     } catch(e) {}
   };
 
-  // ── cloud load / save ──
   useEffect(() => {
     const loadData = async () => {
       if (!userEmail) return;
@@ -115,12 +112,21 @@ function Simulator() {
   useEffect(() => { terminalEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logs]);
   useEffect(() => { addLog(`USER_SESSION: ${userEmail}`, "info"); addLog("SYSTEM INITIALIZED...", "info"); }, []);
 
-  // ── block update ──
   const updateBlock = (index, updatedFields) => {
     setBlocks(prev => {
       const nb = [...prev];
       nb[index - 1] = { ...nb[index - 1], ...updatedFields };
-      if (index < nb.length) nb[index].previousHash = updatedFields.hash;
+      // Cascade: recompute hash for EVERY subsequent block so the full chain turns red
+      // Must match Block.jsx line 134 formula exactly — POS blocks include validator+stake
+      for (let i = index; i < nb.length; i++) {
+        const b = nb[i];
+        const newPrevHash = nb[i - 1].hash;
+        const txData = JSON.stringify({ sender: b.sender, receiver: b.receiver, amount: b.amount });
+        const isPosBlock = b.createdWith === 'POS' || (b.signature && b.signature !== '');
+        const text = b.index + newPrevHash + txData + b.nonce + (isPosBlock ? (b.validator || '') + (b.stake || '') : '');
+        const recomputedHash = sha256(text).toString();
+        nb[i] = { ...b, previousHash: newPrevHash, hash: recomputedHash };
+      }
       return nb;
     });
   };
@@ -129,7 +135,6 @@ function Simulator() {
     if (blocks.length > 1) setBlocks(prev => prev.slice(0, -1));
   };
 
-  // ── OPEN MODAL ──
   const openAddModal = () => {
     if (!wallet) {
       addLog("⚠️ NO WALLET FOUND — open KEY_VAULT to generate one first!", "error");
@@ -144,9 +149,6 @@ function Simulator() {
     setShowModal(true);
   };
 
-  // ── STEP 1 → STEP 2: compute tx hash, move to sign screen ──
-  // CRITICAL: amount must be Number() here — same type used in deployBlock and
-  // Block.jsx's currentTxHash — otherwise the hashes won't match after save/load.
   const goToSignStep = () => {
     const numAmount = Number(formData.amount);
     const data      = JSON.stringify({ sender: formData.sender, receiver: formData.receiver, amount: numAmount });
@@ -157,7 +159,6 @@ function Simulator() {
     setModalStep('sign');
   };
 
-  // ── SIGN: simulate ECDSA — sig = sha256(txHash + privateKey) ──
   const signTransaction = () => {
     setSigStatus('signing');
     setTimeout(() => {
@@ -169,13 +170,8 @@ function Simulator() {
     }, 900);
   };
 
-  // ── DEPLOY: add block with signature + publicKey + originalTxHash embedded ──
   const deployBlock = () => {
-    const lastBlock = blocks[blocks.length - 1];
-    // Store amount as Number AND save the originalTxHash computed at sign time.
-    // This hash is the ground truth for tamper detection — storing it avoids
-    // false-positive "tampered" alerts caused by string/number type differences
-    // after a MongoDB save/load round-trip.
+    const lastBlock     = blocks[blocks.length - 1];
     const numAmount     = Number(formData.amount);
     const origTxHash    = sha256(JSON.stringify({ sender: formData.sender, receiver: formData.receiver, amount: numAmount })).toString();
     const newBlock      = {
@@ -189,14 +185,13 @@ function Simulator() {
       txSignature:     txSig,
       signerPubKey:    wallet.publicKey,
       originalTxHash:  origTxHash,
-      createdWith:     consensus, // ← persisted so Block never needs to recompute it
+      createdWith:     consensus,
     };
     setBlocks(prev => [...prev, newBlock]);
     addLog(`BLOCK #${blocks.length + 1} DEPLOYED — signed by ${wallet.publicKey.substring(0, 10)}...`, "success");
     setShowModal(false);
   };
 
-  // ── COLORS ──
   const accentColor = consensus === 'POS' ? '#d800ff' : '#00ff00';
   const cyan        = '#00ffff';
   const orange      = '#ff6600';
@@ -228,18 +223,15 @@ function Simulator() {
         <h1 style={{ color: '#00ff00', fontSize: '28px', margin: '0 0 15px', textShadow: '0 0 10px #00ff00', fontFamily: 'monospace' }}>&gt;_ BLOCKCHAIN_CORE_v3.0</h1>
 
         <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* CONSENSUS */}
           <div style={{ border: '1px solid #00ff00', padding: '2px', background: 'black', display: 'flex' }}>
             <button onClick={() => { setConsensus("POW"); addLog("MODE: POW", "info"); }} style={{ padding: '10px 20px', border: 'none', cursor: 'pointer', fontFamily: 'monospace', background: consensus === "POW" ? '#00ff00' : 'black', color: consensus === "POW" ? 'black' : '#00ff00' }}>MINING</button>
             <button onClick={() => { setConsensus("POS"); addLog("MODE: POS", "info"); }} style={{ padding: '10px 20px', border: 'none', cursor: 'pointer', fontFamily: 'monospace', background: consensus === "POS" ? '#d800ff' : 'black', color: consensus === "POS" ? 'black' : '#d800ff' }}>STAKING</button>
           </div>
 
-          {/* SYNC */}
           <button onClick={saveToCloud} disabled={isSyncing} style={{ padding: '10px 20px', border: '1px solid cyan', background: 'rgba(0,255,255,0.1)', color: 'cyan', cursor: 'pointer', fontFamily: 'monospace' }}>
             {isSyncing ? "SYNCING..." : "[ SYNC_TO_CLOUD ]"}
           </button>
 
-          {/* KEY VAULT — shows wallet status */}
           <button
             onClick={() => { setShowKeyVault(true); addLog("KEY_VAULT OPENED", "info"); }}
             style={{ padding: '10px 20px', border: `1px solid ${cyan}`, background: wallet ? `${cyan}22` : 'black', color: cyan, cursor: 'pointer', fontFamily: 'monospace', letterSpacing: '1px', position: 'relative' }}
@@ -249,9 +241,16 @@ function Simulator() {
               <span style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ff0000', borderRadius: '50%', width: '12px', height: '12px', fontSize: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>!</span>
             )}
           </button>
+
+          {/* ⚔️ ATTACK BUTTON */}
+          <button
+            onClick={() => { setShowAttackMenu(true); addLog("⚔️ ATTACK SIMULATOR OPENED", "warn"); }}
+            style={{ padding: '10px 20px', border: '1px solid #ff0000', background: 'rgba(255,0,0,0.08)', color: '#ff0000', cursor: 'pointer', fontFamily: 'monospace', letterSpacing: '1px', animation: 'attackPulse 2s ease-in-out infinite' }}
+          >
+            ⚔️ ATTACK
+          </button>
         </div>
 
-        {/* WALLET STATUS BAR */}
         {!wallet && (
           <div style={{ marginTop: '10px', color: '#ff6600', fontSize: '11px', fontFamily: 'monospace', opacity: 0.8 }}>
             ⚠️ No wallet detected — you must generate a wallet before adding blocks
@@ -299,20 +298,15 @@ function Simulator() {
         <div ref={terminalEndRef} />
       </div>
 
-      {/* ═══════════════════════════════════════
-          ADD BLOCK MODAL — 2 steps
-          STEP 1: form  |  STEP 2: sign
-      ═══════════════════════════════════════ */}
+      {/* ADD BLOCK MODAL */}
       {showModal && (
-        <div onClick={() => setShowModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 998, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#000', border: `1px solid ${accentColor}`, boxShadow: `0 0 30px ${accentColor}66`, borderRadius: '6px', padding: '28px 32px', width: '340px', fontFamily: 'monospace', animation: 'fadeInScale 0.15s ease' }}>
+        <div onClick={() => setShowModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#000', border: `1px solid ${accentColor}`, boxShadow: `0 0 30px ${accentColor}66`, borderRadius: '6px', padding: '28px 32px', width: '340px', fontFamily: 'monospace', animation: 'fadeInScale 0.15s ease', maxHeight: '90vh', overflowY: 'auto' }}>
 
-            {/* MODAL HEADER */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${accentColor}33`, paddingBottom: '12px', marginBottom: '18px' }}>
               <div style={{ color: accentColor, fontSize: '15px', fontWeight: 'bold', letterSpacing: '2px' }}>
                 {modalStep === 'form' ? '📝 NEW_BLOCK' : '✍️ SIGN_TX'}
               </div>
-              {/* STEP INDICATOR */}
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 {['form', 'sign'].map((s, i) => (
                   <React.Fragment key={s}>
@@ -327,7 +321,6 @@ function Simulator() {
               BLOCK #{blocks.length + 1} — MODE: {consensus}
             </div>
 
-            {/* ── STEP 1: FORM ── */}
             {modalStep === 'form' && (
               <>
                 <div style={{ marginBottom: '14px' }}>
@@ -342,41 +335,29 @@ function Simulator() {
                   <label style={labelStyle}>₿ AMOUNT</label>
                   <input type="number" style={inputStyle} value={formData.amount} onChange={e => setFormData(p => ({ ...p, amount: e.target.value }))} placeholder="0" min="0" />
                 </div>
-
                 <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
                   <button onClick={() => setShowModal(false)} style={{ flex: 1, padding: '10px', background: 'black', border: '1px solid #ff0000', color: '#ff0000', fontFamily: 'monospace', cursor: 'pointer' }}>CANCEL</button>
-                  <button
-                    onClick={goToSignStep}
-                    disabled={!formData.sender || !formData.receiver || formData.amount === ""}
-                    style={{ flex: 1, padding: '10px', background: accentColor, border: `1px solid ${accentColor}`, color: 'black', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', opacity: (!formData.sender || !formData.receiver || formData.amount === "") ? 0.4 : 1 }}
-                  >
+                  <button onClick={goToSignStep} disabled={!formData.sender || !formData.receiver || formData.amount === ""} style={{ flex: 1, padding: '10px', background: accentColor, border: `1px solid ${accentColor}`, color: 'black', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', opacity: (!formData.sender || !formData.receiver || formData.amount === "") ? 0.4 : 1 }}>
                     NEXT: SIGN ➔
                   </button>
                 </div>
               </>
             )}
 
-            {/* ── STEP 2: SIGN ── */}
             {modalStep === 'sign' && (
               <>
-                {/* UNIQUE SIGNATURE EXPLAINER */}
                 <div style={{ background: '#0a0500', border: `1px solid ${orange}44`, borderRadius: '4px', padding: '10px', marginBottom: '14px', fontSize: '10px', lineHeight: '1.7' }}>
                   🔑 <span style={{ color: orange }}>Same wallet, unique signature.</span><br/>
                   <span style={{ color: '#664400' }}>Each block gets its own signature computed from <em style={{ color: '#aaa' }}>its own data</em>. Change even one character and the signature is completely different.</span>
                 </div>
-
-                {/* VISUAL FLOW: DATA → HASH → SIG */}
                 <div style={{ background: '#050505', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '12px', marginBottom: '14px' }}>
-
                   <div style={{ marginBottom: '8px' }}>
                     <div style={{ color: '#444', fontSize: '9px', letterSpacing: '1px', marginBottom: '3px' }}>① TX DATA — block #{blocks.length + 1} only</div>
                     <div style={{ background: '#0a0a0a', border: '1px solid #111', borderRadius: '3px', padding: '6px 8px', fontSize: '9px', fontFamily: 'monospace', color: '#aaa' }}>
                       {`{ from: "${formData.sender}", to: "${formData.receiver}", amount: ${formData.amount} }`}
                     </div>
                   </div>
-
                   <div style={{ color: '#333', fontSize: '10px', textAlign: 'center', marginBottom: '6px' }}>⬇ sha256()</div>
-
                   <div style={{ marginBottom: '8px' }}>
                     <div style={{ color: '#444', fontSize: '9px', letterSpacing: '1px', marginBottom: '3px' }}>② TX HASH — unique fingerprint of this block</div>
                     <div style={{ background: '#0a0a0a', border: '1px solid #111', borderRadius: '3px', padding: '6px 8px', fontSize: '9px', wordBreak: 'break-all', fontFamily: 'monospace', lineHeight: '1.5' }}>
@@ -384,9 +365,7 @@ function Simulator() {
                       <span style={{ color: '#222' }}>{txHash.substring(16)}</span>
                     </div>
                   </div>
-
                   <div style={{ color: '#333', fontSize: '10px', textAlign: 'center', marginBottom: '6px' }}>⬇ sha256( txHash + <span style={{ color: orange }}>privateKey</span> )</div>
-
                   <div>
                     <div style={{ color: '#444', fontSize: '9px', letterSpacing: '1px', marginBottom: '3px' }}>③ SIGNATURE — only your private key produces this</div>
                     {!txSig ? (
@@ -401,8 +380,6 @@ function Simulator() {
                     )}
                   </div>
                 </div>
-
-                {/* WALLET ROW */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', padding: '8px 10px', background: '#050505', border: '1px solid #1a1a1a', borderRadius: '3px' }}>
                   <span style={{ fontSize: '14px' }}>🔐</span>
                   <div style={{ fontSize: '10px' }}>
@@ -410,22 +387,18 @@ function Simulator() {
                     <div style={{ color: '#00ff00', fontFamily: 'monospace', fontSize: '9px' }}>{wallet?.publicKey.substring(0, 28)}...</div>
                   </div>
                 </div>
-
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button onClick={() => setModalStep('form')} style={{ flex: 1, padding: '10px', background: 'black', border: '1px solid #333', color: '#555', fontFamily: 'monospace', cursor: 'pointer' }}>← BACK</button>
                   {!txSig ? (
-                    <button onClick={signTransaction} disabled={sigStatus === 'signing'}
-                      style={{ flex: 2, padding: '10px', background: sigStatus === 'signing' ? '#111' : orange, border: `1px solid ${orange}`, color: sigStatus === 'signing' ? '#333' : 'black', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer' }}>
+                    <button onClick={signTransaction} disabled={sigStatus === 'signing'} style={{ flex: 2, padding: '10px', background: sigStatus === 'signing' ? '#111' : orange, border: `1px solid ${orange}`, color: sigStatus === 'signing' ? '#333' : 'black', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer' }}>
                       {sigStatus === 'signing' ? '⟳ SIGNING...' : '🔑 SIGN WITH PRIVATE KEY'}
                     </button>
                   ) : (
-                    <button onClick={deployBlock}
-                      style={{ flex: 2, padding: '10px', background: '#00ff00', border: '1px solid #00ff00', color: 'black', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer' }}>
+                    <button onClick={deployBlock} style={{ flex: 2, padding: '10px', background: '#00ff00', border: '1px solid #00ff00', color: 'black', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer' }}>
                       🚀 DEPLOY BLOCK
                     </button>
                   )}
                 </div>
-
                 <div style={{ color: '#333', fontSize: '10px', marginTop: '12px', lineHeight: '1.7', borderTop: '1px solid #111', paddingTop: '10px' }}>
                   {!txSig
                     ? <>Block #{blocks.length + 1} needs its own signature. The <span style={{ color: orange }}>same private key</span> produces a <span style={{ color: orange }}>completely different result</span> here than on any other block — because the tx data is different.</>
@@ -450,10 +423,19 @@ function Simulator() {
         </>
       )}
 
+      {/* ATTACK MENU */}
+      {showAttackMenu && (
+        <AttackMenu blocks={blocks} onClose={() => setShowAttackMenu(false)} />
+      )}
+
       <style>{`
         @keyframes fadeInScale {
           from { opacity: 0; transform: scale(0.92); }
           to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes attackPulse {
+          0%, 100% { box-shadow: 0 0 5px #ff000033; }
+          50%       { box-shadow: 0 0 15px #ff000099; border-color: #ff4444; }
         }
       `}</style>
     </div>
