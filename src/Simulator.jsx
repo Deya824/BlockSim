@@ -75,7 +75,7 @@ hash: "00ae5fb007821c281ab4d80f8562d801884378650176909c413a2c398c8e6e01",
       if (!userEmail) return;
       addLog("CONTACTING MONGODB CLOUD...", "info");
       try {
-        const res  = await fetch(`http://127.0.0.1:5000/load/${userEmail}`);
+        const res  = await fetch(`${process.env.NEXT_URL_BACK}/load/${userEmail}`);
         const data = await res.json();
         if (data.success && data.blockchain?.length > 0) {
           setBlocks(data.blockchain);
@@ -92,7 +92,7 @@ hash: "00ae5fb007821c281ab4d80f8562d801884378650176909c413a2c398c8e6e01",
     setIsSyncing(true);
     addLog("INITIATING DATA UPLOAD...", "info");
     try {
-      const res  = await fetch('http://127.0.0.1:5000/save', {
+      const res  = await fetch(`${process.env.NEXT_URL_BACK}/save` , {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: userEmail, blockchain: blocks }),

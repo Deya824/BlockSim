@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 dns.setServers(['8.8.8.8', '8.8.4.4']);
@@ -10,9 +12,8 @@ const cors = require('cors');
 
 const app = express();
 app.use(express.json());
-// STRICT CORS POLICY: Allow your React app port (likely 5173 for Vite)
 app.use(cors({
-  origin: "http://localhost:5173", // Check if your React app is on 5173 or 3000
+  origin: [process.env.NEXT_URL_LOCAL, "http://localhost:5175"],
   methods: ["GET", "POST"],
   credentials: true
 }));
@@ -20,11 +21,15 @@ app.use(cors({
 
 
 
+
 // --- 1. CONNECTION ---
-// Your Roll: 2203057 - Using your cloud URI
-const MONGO_URI = "mongodb+srv://deyafabliha:test1234@cluster0.piadh.mongodb.net/blockchain_db?retryWrites=true&w=majority";
+// Using MONGO_URI from .env
+const MONGO_URI = process.env.MONGO_URI;
 
-
+if (!MONGO_URI) {
+  console.error("❌ MONGO_URI is not set. Check your .env file.");
+  process.exit(1);
+}
 
 mongoose.connect(MONGO_URI,{
   serverSelectionTimeoutMS: 15000,
