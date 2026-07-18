@@ -114,8 +114,10 @@ app.post('/register', async (req, res) => {
     res.status(500).json({ success: false, message: "Registration crash" });
   }
 });
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`🚀 SERVER LIVE ON PORT ${PORT}`));
 
-app.listen(5000, () => console.log("🚀 SERVER LIVE ON PORT 5000"));
+
 // --- NEW: LOAD BLOCKCHAIN DATA ---
 app.get('/load/:email', async (req, res) => {
   try {
